@@ -1,0 +1,111 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:os_keystore_backend/os_keystore_backend.dart';
+
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  String keyId = 'Not generated';
+  bool keyGenerated = false;
+  String signature = 'Nothing signed';
+  final _osKeystoreBackendPlugin = OsKeystoreBackend();
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  Future<void> generateKey() async {
+    setState(() {
+      keyId = 'Generating';
+    });
+
+    try {
+      keyId = await _osKeystoreBackendPlugin.generateKey('secp256r1', false);
+      keyGenerated = true;
+    } on PlatformException {
+      keyId = 'Failed to generate key';
+    }
+
+    setState(() {});
+  }
+
+  Future<void> sign() async {
+    setState(() {
+      signature = 'signing';
+    });
+
+    Uint8List? sig;
+    try {
+      sig = await _osKeystoreBackendPlugin.sign(keyId, ascii.encode('abcdefg'));
+    } on PlatformException catch (e) {
+      print(e);
+      signature = 'Failed to sign';
+    }
+
+    setState(() {
+      if (sig != null) {
+        signature = base64Encode(sig);
+      }
+    });
+  }
+
+  Future<void> getKeyInfo() async {
+    try {
+      var info = await _osKeystoreBackendPlugin.getKeyInfo(
+        keyId,
+      );
+      print(info);
+    } on PlatformException catch (e) {
+      print(e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        appBar: AppBar(
+          title: const Text('Plugin example app'),
+        ),
+        body: Center(
+          child: Column(children: [
+            ElevatedButton(onPressed: generateKey, child: Text('Generate Key')),
+            SizedBox(
+              height: 10,
+            ),
+            Text(
+              keyId,
+            ),
+            SizedBox(
+              height: 10,
+            ),
+            ElevatedButton(onPressed: sign, child: Text('Sign')),
+            SizedBox(
+              height: 10,
+            ),
+            Text(
+              signature,
+            ),
+            SizedBox(
+              height: 10,
+            ),
+            ElevatedButton(onPressed: getKeyInfo, child: Text('Info')),
+          ]),
+        ),
+      ),
+    );
+  }
+}
