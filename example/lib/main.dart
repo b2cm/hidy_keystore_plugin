@@ -20,6 +20,7 @@ class _MyAppState extends State<MyApp> {
   String keyId = 'Not generated';
   bool keyGenerated = false;
   String signature = 'Nothing signed';
+  String verifiedG = 'Nothing verified';
   final _osKeystoreBackendPlugin = OsKeystoreBackend();
 
   @override
@@ -62,6 +63,27 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
+  Future<void> verify() async {
+    setState(() {
+      verifiedG = 'verification';
+    });
+
+    bool? verified;
+    try {
+      verified = await _osKeystoreBackendPlugin.verify(
+          keyId, ascii.encode('abcdefg'), base64Decode(signature));
+    } on PlatformException catch (e) {
+      print(e);
+      signature = 'Failed to sign';
+    }
+
+    setState(() {
+      if (verified != null) {
+        verifiedG = 'Result: $verified';
+      }
+    });
+  }
+
   Future<void> getKeyInfo() async {
     try {
       var info = await _osKeystoreBackendPlugin.getKeyInfo(
@@ -98,6 +120,13 @@ class _MyAppState extends State<MyApp> {
             ),
             Text(
               signature,
+            ),
+            ElevatedButton(onPressed: verify, child: Text('Verify')),
+            SizedBox(
+              height: 10,
+            ),
+            Text(
+              verifiedG,
             ),
             SizedBox(
               height: 10,

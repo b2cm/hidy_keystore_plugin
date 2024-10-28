@@ -58,12 +58,27 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
           val sig = sign(keyId, data)
           result.success(sig)
         }catch (e: Exception){
+          result.error("VerificationError", e.message, "")
+        }
+      } else {
+        result.error("ArgumentError", "Missing argument", "")
+      }
+    } else if(call.method == "verify"){
+      val data = call.argument<ByteArray>("data")
+      val signature = call.argument<ByteArray>("signature")
+      val keyId = call.argument<String>("keyId")
+
+      if(keyId != null && data != null && signature != null){
+        try {
+          val sig = verify(keyId, data, signature)
+          result.success(sig)
+        }catch (e: Exception){
           result.error("SigningError", e.message, "")
         }
       } else {
         result.error("ArgumentError", "Missing argument", "")
       }
-    }else if(call.method == "getKeyInfo"){
+    } else if(call.method == "getKeyInfo"){
       val keyId = call.argument<String>("keyId")
 
       if(keyId != null ){
@@ -153,6 +168,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
           .setAlgorithmParameterSpec(ECGenParameterSpec(curve))
           .setDigests(digest)
           .setUserAuthenticationRequired(true)
+
           .build()
       )
     }
@@ -193,6 +209,37 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
     return signature
   }
 
+  private fun verify(keyId: String, data: ByteArray, signature: ByteArray) : Boolean {
+    val ks: KeyStore = KeyStore.getInstance("AndroidKeyStore").apply {
+      load(null)
+    }
+
+    val entry: KeyStore.Entry = ks.getEntry(keyId, null)
+    if (entry !is KeyStore.PrivateKeyEntry) {
+      throw  Exception("No private key")
+    }
+
+    val factory = KeyFactory.getInstance(entry.privateKey.algorithm, "AndroidKeyStore")
+    val keyInfo: KeyInfo
+    try {
+      keyInfo = factory.getKeySpec(entry.privateKey, KeyInfo::class.java)
+    } catch (e: InvalidKeySpecException) {
+      throw  Exception("No keyInfo found")
+    }
+
+    var digest = keyInfo.digests.first().split("_").first()
+
+    digest = digest.replace("-", "")
+
+    val verified: Boolean = Signature.getInstance("${digest}withECDSA").run {
+      initVerify(entry.certificate)
+      update(data)
+      verify(signature)
+    }
+
+    return verified
+  }
+
   private fun getKeyInfo(keyId: String) : Map<String, Any>{
     val ks: KeyStore = KeyStore.getInstance("AndroidKeyStore").apply {
       load(null)
@@ -211,9 +258,11 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
       throw  Exception("No keyInfo found")
     }
 
+
     val data = LinkedHashMap<String, Any>()
-    val x5c = ArrayList<String>()
-    x5c.add(Base64.getEncoder().encodeToString(entry.certificate.encoded))
+    //val x5c = ArrayList<String>()
+    //x5c.add(Base64.getEncoder().encodeToString(entry.certificate.encoded))
+    val x5c = entry.certificateChain.map { c -> Base64.getEncoder().encodeToString(c.encoded) }
     data["x5c"] = x5c
     data["kty"] = "EC"
 

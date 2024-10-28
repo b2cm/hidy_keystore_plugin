@@ -34,4 +34,6 @@ abstract class OsKeystoreBackendPlatform extends PlatformInterface {
   Future<bool> hasKey(String keyId);
 
   Future<bool> deleteKey(String keyId);
+
+  Future<bool> verify(String keyId, Uint8List data, Uint8List signature);
 }

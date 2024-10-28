@@ -16,6 +16,11 @@ class OsKeystoreBackend {
     return OsKeystoreBackendPlatform.instance.sign(keyId, data);
   }
 
+  /// Verifies the given [signature] over [data] with the key identified by [keyId]
+  Future<bool> verify(String keyId, Uint8List data, Uint8List signature) {
+    return OsKeystoreBackendPlatform.instance.verify(keyId, data, signature);
+  }
+
   /// Returns metadata about the key identified by [keyId].
   ///
   /// This metadata has jwk format. On android the keys kty, key_ops, x5c (to provide the public key),

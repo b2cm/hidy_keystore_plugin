@@ -36,6 +36,21 @@ class MethodChannelOsKeystoreBackend extends OsKeystoreBackendPlatform {
   }
 
   @override
+  Future<bool> verify(String keyId, Uint8List data, Uint8List signature) async {
+    final verified = await methodChannel.invokeMethod<bool>(
+        'verify', <String, dynamic>{
+      'keyId': keyId,
+      'data': data,
+      'signature': signature
+    });
+    if (verified != null) {
+      return verified;
+    } else {
+      throw Exception('Verification failed');
+    }
+  }
+
+  @override
   Future<Map> getKeyInfo(String keyId) async {
     final info = await methodChannel
         .invokeMethod<Map>('getKeyInfo', <String, dynamic>{'keyId': keyId});
