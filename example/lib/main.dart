@@ -34,9 +34,10 @@ class _MyAppState extends State<MyApp> {
     });
 
     try {
-      keyId = await _osKeystoreBackendPlugin.generateKey('secp256r1', false);
+      keyId = await _osKeystoreBackendPlugin.generateKey('secp384r1', false);
       keyGenerated = true;
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      print(e);
       keyId = 'Failed to generate key';
     }
 
@@ -89,6 +90,10 @@ class _MyAppState extends State<MyApp> {
       var info = await _osKeystoreBackendPlugin.getKeyInfo(
         keyId,
       );
+      var x5c = info['x5c'] as List;
+      for (var entry in x5c) {
+        print(entry);
+      }
       print(info);
     } on PlatformException catch (e) {
       print(e);

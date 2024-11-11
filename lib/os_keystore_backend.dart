@@ -12,11 +12,16 @@ class OsKeystoreBackend {
   }
 
   /// Sign the given [data] with the key identified by [keyId]
+  ///
+  /// The returned signature is a plain signature (for ecdsa this means the concatenation of r and s value)
   Future<Uint8List> sign(String keyId, Uint8List data) {
     return OsKeystoreBackendPlatform.instance.sign(keyId, data);
   }
 
   /// Verifies the given [signature] over [data] with the key identified by [keyId]
+  ///
+  /// [signature] has to be a plain signature (for ecdsa this means the concatenation of r and s value)
+  /// without any additional encoding (e.g. ASN1)
   Future<bool> verify(String keyId, Uint8List data, Uint8List signature) {
     return OsKeystoreBackendPlatform.instance.verify(keyId, data, signature);
   }

@@ -13,10 +13,20 @@ import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.Signature
+import java.security.cert.CertificateFactory
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.InvalidKeySpecException
 import java.util.Base64
 import kotlin.random.Random
+import com.hierynomus.asn1.ASN1InputStream
+import com.hierynomus.asn1.ASN1OutputStream
+import com.hierynomus.asn1.encodingrules.der.DERDecoder
+import com.hierynomus.asn1.encodingrules.der.DEREncoder
+import com.hierynomus.asn1.types.constructed.ASN1Sequence
+import com.hierynomus.asn1.types.primitive.ASN1Integer
+import java.io.ByteArrayOutputStream
+import java.math.BigInteger
+import java.security.InvalidAlgorithmParameterException
 
 
 /** OsKeystoreBackendPlugin */
@@ -47,7 +57,8 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
         val keyId =  generateKey(curve!!, userAuth)
         result.success(keyId)
       } catch(e: Exception){
-        result.error("GenerationError", e.message, "")
+
+        result.error("GenerationError", e.message, e.stackTraceToString())
       }
     } else if(call.method == "sign"){
       val data = call.argument<ByteArray>("data")
@@ -156,24 +167,41 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
           .setDigests(digest)
           .setIsStrongBoxBacked(true)
           .setUserAuthenticationRequired(userAuthenticationRequired)
+          .setAttestationChallenge("xyz".toByteArray())
           .build()
       )
+      keyPairGenerator.generateKeyPair()
     } catch (e: StrongBoxUnavailableException) {
       alias += "_tee"
+     val builder = KeyGenParameterSpec.Builder(
+       alias,
+       KeyProperties.PURPOSE_SIGN
+     )
+       .setAlgorithmParameterSpec(ECGenParameterSpec(curve))
+       .setDigests(digest)
+       .setUserAuthenticationRequired(userAuthenticationRequired)
+       .setAttestationChallenge("xyz".toByteArray())
+      val r =  builder.build()
       keyPairGenerator.initialize(
-        KeyGenParameterSpec.Builder(
-          alias,
-          KeyProperties.PURPOSE_SIGN
-        )
-          .setAlgorithmParameterSpec(ECGenParameterSpec(curve))
-          .setDigests(digest)
-          .setUserAuthenticationRequired(true)
-
-          .build()
+        r
       )
+      keyPairGenerator.generateKeyPair()
+    }catch(e: InvalidAlgorithmParameterException){
+      alias += "_tee"
+      val builder = KeyGenParameterSpec.Builder(
+        alias,
+        KeyProperties.PURPOSE_SIGN
+      )
+        .setAlgorithmParameterSpec(ECGenParameterSpec(curve))
+        .setDigests(digest)
+        .setUserAuthenticationRequired(userAuthenticationRequired)
+        .setAttestationChallenge("xyz".toByteArray())
+      val r =  builder.build()
+      keyPairGenerator.initialize(
+        r
+      )
+      keyPairGenerator.generateKeyPair()
     }
-
-    keyPairGenerator.generateKeyPair()
 
     return alias
   }
@@ -200,14 +228,50 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
 
     digest = digest.replace("-", "")
 
+    var size: Int = 64
+    if(digest == "SHA384"){
+      size = 96
+    }
+    else if(digest == "SHA512"){
+      size = 132
+    }
+
     val signature: ByteArray = Signature.getInstance("${digest}withECDSA").run {
       initSign(entry.privateKey)
       update(data)
       sign()
     }
 
-    return signature
+    return toP1363(signature, size)
   }
+
+  // source: https://stackoverflow.com/questions/77653037/signing-jwt-using-es256-on-android
+ private fun toP1363(derSignature: ByteArray, size: Int) : ByteArray {
+    val stream = ASN1InputStream(DERDecoder(), derSignature)
+    val sequence = stream.readObject<ASN1Sequence>()
+    val r = (sequence.get(0).value as BigInteger).toString(16).padStart(size, '0')
+    val s = (sequence.get(1).value as BigInteger).toString(16).padStart(size, '0')
+    return (r + s).hexStringToByteArray()
+  }
+
+  private fun String.hexStringToByteArray() = this.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+
+  private fun toASN1(plainSignature: ByteArray) : ByteArray{
+    val h = plainSignature.size / 2
+    val r = plainSignature.copyOfRange(0, h)
+    val s = plainSignature.copyOfRange(h, plainSignature.size)
+    val ri = BigInteger(1,r)
+    val si = BigInteger(1,s)
+    val seq = ASN1Sequence(listOf(ASN1Integer(ri),ASN1Integer(si)))
+
+    val baos = ByteArrayOutputStream()
+    val out = ASN1OutputStream(DEREncoder(), baos)
+
+    out.writeObject(seq)
+
+    return baos.toByteArray()
+  }
+
 
   private fun verify(keyId: String, data: ByteArray, signature: ByteArray) : Boolean {
     val ks: KeyStore = KeyStore.getInstance("AndroidKeyStore").apply {
@@ -231,10 +295,12 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
 
     digest = digest.replace("-", "")
 
+    println(toASN1(signature).joinToString(prefix = "[", postfix = "]"))
+
     val verified: Boolean = Signature.getInstance("${digest}withECDSA").run {
       initVerify(entry.certificate)
       update(data)
-      verify(signature)
+      verify(toASN1(signature))
     }
 
     return verified
