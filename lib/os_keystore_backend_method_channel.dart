@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:os_keystore_backend/biometric_prompt_data.dart';
 
 import 'os_keystore_backend_platform_interface.dart';
 
@@ -25,9 +26,16 @@ class MethodChannelOsKeystoreBackend extends OsKeystoreBackendPlatform {
   }
 
   @override
-  Future<Uint8List> sign(String keyId, Uint8List data) async {
-    final signature = await methodChannel.invokeMethod<Uint8List>(
-        'sign', <String, dynamic>{'keyId': keyId, 'data': data});
+  Future<Uint8List> sign(
+      String keyId, Uint8List data, BiometricPromptData? promptData) async {
+    final signature =
+        await methodChannel.invokeMethod<Uint8List>('sign', <String, dynamic>{
+      'keyId': keyId,
+      'data': data,
+      'biometricPromptTitle': promptData?.title,
+      'biometricPromptSubtitle': promptData?.subtitle,
+      'biometricPromptNegative': promptData?.negativeButton
+    });
     if (signature != null) {
       return signature;
     } else {

@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:os_keystore_backend/biometric_prompt_data.dart';
+
 import 'os_keystore_backend_platform_interface.dart';
 
 class OsKeystoreBackend {
@@ -14,8 +16,11 @@ class OsKeystoreBackend {
   /// Sign the given [data] with the key identified by [keyId]
   ///
   /// The returned signature is a plain signature (for ecdsa this means the concatenation of r and s value)
-  Future<Uint8List> sign(String keyId, Uint8List data) {
-    return OsKeystoreBackendPlatform.instance.sign(keyId, data);
+  ///
+  /// [promptData] is used to customize the System prompt for biometric authentication, when a key with userAuthenticationRequired=true is used. Maybe Android Only?
+  Future<Uint8List> sign(String keyId, Uint8List data,
+      [BiometricPromptData? promptData]) {
+    return OsKeystoreBackendPlatform.instance.sign(keyId, data, promptData);
   }
 
   /// Verifies the given [signature] over [data] with the key identified by [keyId]

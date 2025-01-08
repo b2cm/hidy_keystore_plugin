@@ -1,46 +1,63 @@
 package com.example.os_keystore_backend
 
+import android.app.Activity
+import android.os.Handler
+import android.os.Looper
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
-import io.flutter.embedding.engine.plugins.FlutterPlugin
-import io.flutter.plugin.common.MethodCall
-import io.flutter.plugin.common.MethodChannel
-import io.flutter.plugin.common.MethodChannel.MethodCallHandler
-import io.flutter.plugin.common.MethodChannel.Result
-import java.security.KeyFactory
-import java.security.KeyPairGenerator
-import java.security.KeyStore
-import java.security.Signature
-import java.security.cert.CertificateFactory
-import java.security.spec.ECGenParameterSpec
-import java.security.spec.InvalidKeySpecException
-import java.util.Base64
-import kotlin.random.Random
+import androidx.biometric.BiometricPrompt
+import androidx.fragment.app.FragmentActivity
 import com.hierynomus.asn1.ASN1InputStream
 import com.hierynomus.asn1.ASN1OutputStream
 import com.hierynomus.asn1.encodingrules.der.DERDecoder
 import com.hierynomus.asn1.encodingrules.der.DEREncoder
 import com.hierynomus.asn1.types.constructed.ASN1Sequence
 import com.hierynomus.asn1.types.primitive.ASN1Integer
+import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
+import io.flutter.plugin.common.MethodCall
+import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.MethodChannel.MethodCallHandler
+import io.flutter.plugin.common.MethodChannel.Result
 import java.io.ByteArrayOutputStream
 import java.math.BigInteger
 import java.security.InvalidAlgorithmParameterException
+import java.security.KeyFactory
+import java.security.KeyPairGenerator
+import java.security.KeyStore
+import java.security.Signature
+import java.security.spec.ECGenParameterSpec
+import java.security.spec.InvalidKeySpecException
+import java.util.Base64
+import java.util.concurrent.Executor
+import kotlin.random.Random
 
 
 /** OsKeystoreBackendPlugin */
-class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
+class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
   /// The MethodChannel that will the communication between Flutter and native Android
   ///
   /// This local reference serves to register the plugin with the Flutter Engine and unregister it
   /// when the Flutter Engine is detached from the Activity
   private lateinit var channel : MethodChannel
+  private lateinit var activity: Activity
 
 
   override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     channel = MethodChannel(flutterPluginBinding.binaryMessenger, "os_keystore_backend")
     channel.setMethodCallHandler(this)
+  }
+
+
+  class UiThreadExecutor : Executor {
+    private val handler: Handler = Handler(Looper.getMainLooper())
+
+    override fun execute(command: Runnable) {
+      handler.post(command)
+    }
   }
 
   override fun onMethodCall(call: MethodCall, result: Result) {
@@ -66,10 +83,14 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
 
       if(keyId != null && data != null){
         try {
-          val sig = sign(keyId, data)
-          result.success(sig)
+          sign(keyId,
+            data,
+            result,
+            call.argument<String?>("biometricPromptTitle"),
+            call.argument<String?>("biometricPromptSubtitle"),
+            call.argument<String?>("biometricPromptNegative"))
         }catch (e: Exception){
-          result.error("VerificationError", e.message, "")
+          result.error("SigningError", e.message, "")
         }
       } else {
         result.error("ArgumentError", "Missing argument", "")
@@ -84,7 +105,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
           val sig = verify(keyId, data, signature)
           result.success(sig)
         }catch (e: Exception){
-          result.error("SigningError", e.message, "")
+          result.error("VerificationError", e.message, "")
         }
       } else {
         result.error("ArgumentError", "Missing argument", "")
@@ -206,7 +227,12 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
     return alias
   }
 
-  private fun sign(keyId: String, data: ByteArray) : ByteArray {
+  private fun sign(keyId: String,
+                   data: ByteArray,
+                   result: Result,
+                   biometricPromptTitle: String?,
+                   biometricPromptSubtitle: String?,
+                   biometricPromptNegative: String?)  {
     val ks: KeyStore = KeyStore.getInstance("AndroidKeyStore").apply {
       load(null)
     }
@@ -221,14 +247,15 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
     try {
       keyInfo = factory.getKeySpec(entry.privateKey, KeyInfo::class.java)
     } catch (e: InvalidKeySpecException) {
-      throw  Exception("No keyInfo found")
+      result.error("SigningError", "No Key found", null)
+      return
     }
 
     var digest = keyInfo.digests.first().split("_").first()
 
     digest = digest.replace("-", "")
 
-    var size: Int = 64
+    var size = 64
     if(digest == "SHA384"){
       size = 96
     }
@@ -236,13 +263,53 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
       size = 132
     }
 
-    val signature: ByteArray = Signature.getInstance("${digest}withECDSA").run {
-      initSign(entry.privateKey)
-      update(data)
-      sign()
+    var signature: ByteArray
+
+    if(keyInfo.isUserAuthenticationRequired){
+      val biometricPrompt = BiometricPrompt(activity as FragmentActivity, UiThreadExecutor(),
+        object : BiometricPrompt.AuthenticationCallback() {
+          override fun onAuthenticationError(errorCode: Int,
+                                             errString: CharSequence) {
+            super.onAuthenticationError(errorCode, errString)
+            result.error("SigningError", "Authentication error", null)
+          }
+
+          override fun onAuthenticationSucceeded(
+            biometricResult: BiometricPrompt.AuthenticationResult) {
+            super.onAuthenticationSucceeded(biometricResult)
+            signature = biometricResult.cryptoObject?.signature!!.sign()
+            result.success(toP1363(signature, size))
+          }
+
+          override fun onAuthenticationFailed() {
+            super.onAuthenticationFailed()
+            result.error("SigningError", "Authentication failed", null)
+          }
+        })
+
+      val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        .setTitle(biometricPromptTitle ?: "Biometric login for signing")
+        .setSubtitle(biometricPromptSubtitle ?: "Please Authenticate for the usage of your signing key")
+        .setNegativeButtonText(biometricPromptNegative ?: "Cancel")
+        .build()
+
+      val s = Signature.getInstance("${digest}withECDSA")
+      s.initSign(entry.privateKey)
+      s.update(data)
+
+      biometricPrompt.authenticate(promptInfo,
+        BiometricPrompt.CryptoObject(s))
+
+    } else {
+      signature = Signature.getInstance("${digest}withECDSA").run {
+        initSign(entry.privateKey)
+        update(data)
+        sign()
+      }
+      result.success( toP1363(signature, size))
     }
 
-    return toP1363(signature, size)
+
   }
 
   // source: https://stackoverflow.com/questions/77653037/signing-jwt-using-es256-on-android
@@ -386,5 +453,21 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler {
       load(null)
     }
     ks.deleteEntry(keyId)
+  }
+
+  override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+    activity = binding.activity
+  }
+
+  override fun onDetachedFromActivityForConfigChanges() {
+    TODO("Not yet implemented")
+  }
+
+  override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+    activity = binding.activity
+  }
+
+  override fun onDetachedFromActivity() {
+    TODO("Not yet implemented")
   }
 }

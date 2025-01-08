@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:os_keystore_backend/biometric_prompt_data.dart';
 import 'package:os_keystore_backend/os_keystore_backend.dart';
 
 void main() {
@@ -28,13 +29,18 @@ class _MyAppState extends State<MyApp> {
     super.initState();
   }
 
+  void printWrapped(String text) {
+    final pattern = RegExp('.{1,800}'); // 800 is the size of each chunk
+    pattern.allMatches(text).forEach((match) => print(match.group(0)));
+  }
+
   Future<void> generateKey() async {
     setState(() {
       keyId = 'Generating';
     });
 
     try {
-      keyId = await _osKeystoreBackendPlugin.generateKey('secp384r1', false);
+      keyId = await _osKeystoreBackendPlugin.generateKey('secp256r1', true);
       keyGenerated = true;
     } on PlatformException catch (e) {
       print(e);
@@ -51,7 +57,13 @@ class _MyAppState extends State<MyApp> {
 
     Uint8List? sig;
     try {
-      sig = await _osKeystoreBackendPlugin.sign(keyId, ascii.encode('abcdefg'));
+      sig = await _osKeystoreBackendPlugin.sign(
+          keyId,
+          ascii.encode('abcdefg'),
+          BiometricPromptData(
+              title: 'Signaturschlüssel freigeben',
+              subtitle:
+                  'Bitte Authentifizieren Sie sich, damit der Schlüssel freigegeben werden kann'));
     } on PlatformException catch (e) {
       print(e);
       signature = 'Failed to sign';
@@ -92,7 +104,7 @@ class _MyAppState extends State<MyApp> {
       );
       var x5c = info['x5c'] as List;
       for (var entry in x5c) {
-        print(entry);
+        printWrapped(entry);
       }
       print(info);
     } on PlatformException catch (e) {
