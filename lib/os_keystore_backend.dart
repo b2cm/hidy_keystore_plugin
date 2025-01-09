@@ -8,9 +8,10 @@ class OsKeystoreBackend {
   /// Generates a key using the specific elliptic [curve] and returns its identifier in the KeyStore System
   ///
   /// Valid values for [curve] are `secp256r1`, `secp384r1` and `secp521r1`.
-  Future<String> generateKey(String curve, bool userAuthenticationRequired) {
+  Future<String> generateKey(String curve, bool userAuthenticationRequired,
+      [String? attestationChallenge]) {
     return OsKeystoreBackendPlatform.instance
-        .generateKey(curve, userAuthenticationRequired);
+        .generateKey(curve, userAuthenticationRequired, attestationChallenge);
   }
 
   /// Sign the given [data] with the key identified by [keyId]

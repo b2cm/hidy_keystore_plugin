@@ -43,7 +43,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
   /// This local reference serves to register the plugin with the Flutter Engine and unregister it
   /// when the Flutter Engine is detached from the Activity
   private lateinit var channel : MethodChannel
-  private lateinit var activity: Activity
+  private var activity: Activity? = null
 
 
   override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
@@ -68,13 +68,14 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
       if(curve == null){
         result.error("ArgumentError", "Missing argument curve", "")
       }
-      var userAuth  = call.argument<Boolean>("userAuthenticationRequired")
-      if(userAuth == null) userAuth = false
+
+      val userAuth = call.argument<Boolean>("userAuthenticationRequired") ?: false
+      val attestationChallenge = call.argument<String>("attestationChallenge") ?: ""
+
       try {
-        val keyId =  generateKey(curve!!, userAuth)
+        val keyId = generateKey(curve!!, userAuth, attestationChallenge)
         result.success(keyId)
       } catch(e: Exception){
-
         result.error("GenerationError", e.message, e.stackTraceToString())
       }
     } else if(call.method == "sign"){
@@ -159,7 +160,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     channel.setMethodCallHandler(null)
   }
 
-  private fun generateKey(curve: String, userAuthenticationRequired: Boolean): String {
+  private fun generateKey(curve: String, userAuthenticationRequired: Boolean, attestationChallenge: String): String {
     val keyPairGenerator = KeyPairGenerator.getInstance(
       KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore"
     )
@@ -188,7 +189,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
           .setDigests(digest)
           .setIsStrongBoxBacked(true)
           .setUserAuthenticationRequired(userAuthenticationRequired)
-          .setAttestationChallenge("xyz".toByteArray())
+          .setAttestationChallenge(attestationChallenge.toByteArray())
           .build()
       )
       keyPairGenerator.generateKeyPair()
@@ -201,13 +202,11 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
        .setAlgorithmParameterSpec(ECGenParameterSpec(curve))
        .setDigests(digest)
        .setUserAuthenticationRequired(userAuthenticationRequired)
-       .setAttestationChallenge("xyz".toByteArray())
+       .setAttestationChallenge(attestationChallenge.toByteArray())
       val r =  builder.build()
-      keyPairGenerator.initialize(
-        r
-      )
+      keyPairGenerator.initialize(r)
       keyPairGenerator.generateKeyPair()
-    }catch(e: InvalidAlgorithmParameterException){
+    } catch(e: InvalidAlgorithmParameterException){
       alias += "_tee"
       val builder = KeyGenParameterSpec.Builder(
         alias,
@@ -216,11 +215,9 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         .setAlgorithmParameterSpec(ECGenParameterSpec(curve))
         .setDigests(digest)
         .setUserAuthenticationRequired(userAuthenticationRequired)
-        .setAttestationChallenge("xyz".toByteArray())
+        .setAttestationChallenge(attestationChallenge.toByteArray())
       val r =  builder.build()
-      keyPairGenerator.initialize(
-        r
-      )
+      keyPairGenerator.initialize(r)
       keyPairGenerator.generateKeyPair()
     }
 
@@ -266,6 +263,11 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     var signature: ByteArray
 
     if(keyInfo.isUserAuthenticationRequired){
+      if(activity !is FragmentActivity){
+        result.error("SigningError", "Not in Fragment Activity", "")
+        return
+      }
+
       val biometricPrompt = BiometricPrompt(activity as FragmentActivity, UiThreadExecutor(),
         object : BiometricPrompt.AuthenticationCallback() {
           override fun onAuthenticationError(errorCode: Int,
@@ -306,7 +308,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         update(data)
         sign()
       }
-      result.success( toP1363(signature, size))
+      result.success(toP1363(signature, size))
     }
 
 
@@ -460,7 +462,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
   }
 
   override fun onDetachedFromActivityForConfigChanges() {
-    TODO("Not yet implemented")
+    activity = null
   }
 
   override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
@@ -468,6 +470,6 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
   }
 
   override fun onDetachedFromActivity() {
-    TODO("Not yet implemented")
+    activity = null
   }
 }
