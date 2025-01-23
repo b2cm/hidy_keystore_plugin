@@ -124,38 +124,60 @@ public class OsKeystoreBackendPlugin: NSObject, FlutterPlugin {
         guard let userAuthenticationRequired = args?["userAuthenticationRequired"] as? Bool else {
             throw OsKeystoreBackendPluginError.argumentError(message: "Missing userAuthenticationRequired argument")
         }
-
-        guard userAuthenticationRequired else {
-            throw OsKeystoreBackendPluginError.argumentError(message: "User authentication is required on iOS")
-        }
-
-        guard curve == "secp256r1" || curve == "P-256" else {
-            throw OsKeystoreBackendPluginError.unsupportedAlgorithm(message: "Unsupported curve")
-        }
-
+        
         // since we dont know the public key when creating the key we create a uuid instead
         let uniqueID = UUID().uuidString
 
-        // access control object https://developer.apple.com/documentation/security/secaccesscontrolcreatewithflags(_:_:_:_:)
-        let access = SecAccessControlCreateWithFlags(
-          kCFAllocatorDefault,
-          kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-          .privateKeyUsage,
-          nil // Ignore errors.
-        )! 
-
-        // apple only supports NIST P-256 elliptic curve keys in the secure enclave (secp256r1)
-        let attributes: NSDictionary = [
-            kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom,
-            kSecAttrKeySizeInBits: 256,
-            kSecAttrTokenID: kSecAttrTokenIDSecureEnclave,
-            kSecPrivateKeyAttrs: [
-                kSecAttrIsPermanent: true,
-                kSecAttrApplicationTag: uniqueID.data(using: .utf8)!,
-                kSecAttrAccessControl: access
+        let access: SecAccessControl = {
+            let flags: SecAccessControlCreateFlags = userAuthenticationRequired ? [.privateKeyUsage, .devicePasscode] : .privateKeyUsage
+            return SecAccessControlCreateWithFlags(
+                kCFAllocatorDefault,
+                kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+                flags,
+                nil
+            )!
+        }()
+        
+        var attributes: NSDictionary = [:]
+        if curve == "secp256r1" {
+            // apple only supports NIST P-256 elliptic curve keys in the secure enclave OR keychain (secp256r1)
+            attributes = [
+                kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom,
+                kSecAttrKeySizeInBits: 256,
+                kSecAttrTokenID: kSecAttrTokenIDSecureEnclave,
+                kSecPrivateKeyAttrs: [
+                    kSecAttrIsPermanent: true,
+                    kSecAttrApplicationTag: uniqueID.data(using: .utf8)!,
+                    kSecAttrAccessControl: access
+                ]
             ]
-        ]
-
+        } 
+        /* // 384 and 512 will give error -25311 and -50 indicating that those key sizes are not supported by the keychain for elyptic curves
+         else if curve == "secp384r1" {
+            attributes = [
+                kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom,
+                kSecAttrKeySizeInBits: 384,
+                kSecPrivateKeyAttrs: [
+                    kSecAttrIsPermanent: true,
+                    kSecAttrApplicationTag: uniqueID.data(using: .utf8)!,
+                    kSecAttrAccessControl: access
+                ]
+            ]
+        } else if curve == "secp512r1" {
+            attributes = [
+                kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom,
+                kSecAttrKeySizeInBits: 512,
+                kSecPrivateKeyAttrs: [
+                    kSecAttrIsPermanent: true,
+                    kSecAttrApplicationTag: uniqueID.data(using: .utf8)!,
+                    kSecAttrAccessControl: access
+                ]
+            ]
+        } */
+        else {
+            throw OsKeystoreBackendPluginError.unsupportedAlgorithm(message: "iOS only supports secp256r1 for keychain storage")
+        }
+        
         var error: Unmanaged<CFError>?
         /*
         The private key is logically part of the keychain, and you can later obtain a reference 
@@ -230,7 +252,7 @@ public class OsKeystoreBackendPlugin: NSObject, FlutterPlugin {
         let algorithm: SecKeyAlgorithm = .ecdsaSignatureMessageX962SHA256
         
         var error: Unmanaged<CFError>?
-print(data.data as CFData)
+
         guard SecKeyVerifySignature(publicKey,
                                     algorithm,
                                     data.data as CFData,
@@ -243,14 +265,6 @@ print(data.data as CFData)
     }
 
     private func handleGetKeyInfo(call: FlutterMethodCall, result: @escaping FlutterResult) throws {
-        /*
-        "On iOS, most of the “post-creation” attributes—like usage purposes, attestation, 
-        or user‑authentication requirements—are not directly queryable at runtime. Apple’s 
-        Keychain and Secure Enclave APIs don’t expose an API like Android’s KeyInfo that 
-        you can read back for each setting."
-
-        Since we are limiting the type of keys that can be generated, we can return a static info object
-        */
 
         // first we check if that key exist and is a private key
         let args = call.arguments as? [String: Any]
@@ -270,15 +284,38 @@ print(data.data as CFData)
         guard status == errSecSuccess, let privateKey = item else {
             throw OsKeystoreBackendPluginError.keyNotFound(message: "No private key for id \(keyId)")
         }
+
+        guard let publicKey = SecKeyCopyPublicKey(item as! SecKey) else {
+            throw OsKeystoreBackendPluginError.keyNotFound(message: "No public key for id \(keyId)")
+        }
+        
+        let (xData, yData) = try! extractXYFromSecp256r1PublicKey(publicKey)
+        
+        // check where the key is stored to determine "userAuthenticationRequired" and "isInsideSecureHardware"
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: keyId,
+            kSecReturnAttributes as String: true,
+            kSecReturnRef as String: true
+        ]
+
+        var keyAttributeRef: CFTypeRef?
+        let keyAttributeStatus = SecItemCopyMatching(query as CFDictionary, &keyAttributeRef)
+
+        let attributes = keyAttributeRef as! [String: Any]
+        //print(attributes)
         
         // Return a map/dictionary structure to mimic the Android side
         let info: [String: Any] = [
             "x5c": [],
             "kty": "EC",
             "key_ops": ["sign", "verify"],
-            "userAuthenticationRequired": true,
-            "isInsideSecureHardware": true
+            "x": xData,
+            "y": yData,
+            "userAuthenticationRequired": String(describing: attributes["accc"]).contains("oa(true)") ? true : false,
+            "isInsideSecureHardware": attributes[kSecAttrTokenID as String] as? String == kSecAttrTokenIDSecureEnclave as String
         ]
+
         result(info)
     }
 
@@ -318,5 +355,29 @@ print(data.data as CFData)
         else { throw OsKeystoreBackendPluginError.deletionError(status: status) }
         // Return success
         result(true)
+    }
+    
+    func extractXYFromSecp256r1PublicKey(_ publicKey: SecKey) throws -> (x: Data, y: Data) {
+        var error: Unmanaged<CFError>?
+        guard let rawData = SecKeyCopyExternalRepresentation(publicKey, &error) as Data? else {
+            if let err = error?.takeRetainedValue() {
+                throw err
+            } else {
+                throw NSError(domain: "KeyError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unknown error"])
+            }
+        }
+        
+        // For an uncompressed secp256r1 key, we expect 65 bytes total:
+        // [0x04][32 bytes X][32 bytes Y]
+        guard rawData.count == 65, rawData.first == 0x04 else {
+            throw NSError(domain: "KeyError", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "Unexpected key format or length"
+            ])
+        }
+        
+        let x = rawData.subdata(in: 1..<33)   // bytes 1..32
+        let y = rawData.subdata(in: 33..<65)  // bytes 33..64
+        
+        return (x, y)
     }
 }

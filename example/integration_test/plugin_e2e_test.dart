@@ -7,26 +7,7 @@ import 'package:os_keystore_backend/os_keystore_backend.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('Generate key with second argument false', (tester) async {
-    if (Platform.isAndroid){
-      final keyId = await OsKeystoreBackend().generateKey("secp256r1", false);
-      expect(keyId, isNotEmpty);
-    }
-    if(Platform.isIOS){
-      try {
-        // Call your plugin method in a way that triggers an argument error
-        await OsKeystoreBackend().generateKey("secp256r1", false); // or invalid input
-        fail('On iOS generateKey with false as second argument should throw an ArgumentError');
-      } on PlatformException catch (e) {
-        // Verify the error code and message
-        expect(e.code, equals('generateKey.argumentError'));
-        // Test e.message as well
-        expect(e.message, isNotNull);
-      }
-    }
-  });
-
-  testWidgets('Generate key with second argument true', (tester) async {
+  testWidgets('Generate key secp256r1', (tester) async {
     final keyId = await OsKeystoreBackend().generateKey("secp256r1", true);
     expect(keyId, isNotEmpty);
   });
