@@ -258,9 +258,10 @@ public class OsKeystoreBackendPlugin: NSObject, FlutterPlugin {
                                     data.data as CFData,
                                     signature.data as CFData,
                                     &error) else {
-                                        throw error!.takeRetainedValue() as Error
+                                        result(false)
+                                        return
         }
-        // Return placeholder boolean
+        
         result(true)
     }
 
@@ -310,8 +311,9 @@ public class OsKeystoreBackendPlugin: NSObject, FlutterPlugin {
             "x5c": [],
             "kty": "EC",
             "key_ops": ["sign", "verify"],
-            "x": xData,
-            "y": yData,
+            "crv": "P-256",
+            "x": xData.base64EncodedString(),
+            "y": yData.base64EncodedString(),
             "userAuthenticationRequired": String(describing: attributes["accc"]).contains("oa(true)") ? true : false,
             "isInsideSecureHardware": attributes[kSecAttrTokenID as String] as? String == kSecAttrTokenIDSecureEnclave as String
         ]
