@@ -9,12 +9,6 @@ import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
 import androidx.biometric.BiometricPrompt
 import androidx.fragment.app.FragmentActivity
-import com.hierynomus.asn1.ASN1InputStream
-import com.hierynomus.asn1.ASN1OutputStream
-import com.hierynomus.asn1.encodingrules.der.DERDecoder
-import com.hierynomus.asn1.encodingrules.der.DEREncoder
-import com.hierynomus.asn1.types.constructed.ASN1Sequence
-import com.hierynomus.asn1.types.primitive.ASN1Integer
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -22,8 +16,6 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
-import java.io.ByteArrayOutputStream
-import java.math.BigInteger
 import java.security.InvalidAlgorithmParameterException
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
@@ -252,14 +244,6 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
 
     digest = digest.replace("-", "")
 
-    var size = 64
-    if(digest == "SHA384"){
-      size = 96
-    }
-    else if(digest == "SHA512"){
-      size = 132
-    }
-
     var signature: ByteArray
 
     if(keyInfo.isUserAuthenticationRequired){
@@ -280,7 +264,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
             biometricResult: BiometricPrompt.AuthenticationResult) {
             super.onAuthenticationSucceeded(biometricResult)
             signature = biometricResult.cryptoObject?.signature!!.sign()
-            result.success(toP1363(signature, size))
+            result.success(signature)
           }
 
           override fun onAuthenticationFailed() {
@@ -308,39 +292,11 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         update(data)
         sign()
       }
-      result.success(toP1363(signature, size))
+      result.success(signature)
     }
 
 
   }
-
-  // source: https://stackoverflow.com/questions/77653037/signing-jwt-using-es256-on-android
- private fun toP1363(derSignature: ByteArray, size: Int) : ByteArray {
-    val stream = ASN1InputStream(DERDecoder(), derSignature)
-    val sequence = stream.readObject<ASN1Sequence>()
-    val r = (sequence.get(0).value as BigInteger).toString(16).padStart(size, '0')
-    val s = (sequence.get(1).value as BigInteger).toString(16).padStart(size, '0')
-    return (r + s).hexStringToByteArray()
-  }
-
-  private fun String.hexStringToByteArray() = this.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-
-  private fun toASN1(plainSignature: ByteArray) : ByteArray{
-    val h = plainSignature.size / 2
-    val r = plainSignature.copyOfRange(0, h)
-    val s = plainSignature.copyOfRange(h, plainSignature.size)
-    val ri = BigInteger(1,r)
-    val si = BigInteger(1,s)
-    val seq = ASN1Sequence(listOf(ASN1Integer(ri),ASN1Integer(si)))
-
-    val baos = ByteArrayOutputStream()
-    val out = ASN1OutputStream(DEREncoder(), baos)
-
-    out.writeObject(seq)
-
-    return baos.toByteArray()
-  }
-
 
   private fun verify(keyId: String, data: ByteArray, signature: ByteArray) : Boolean {
     val ks: KeyStore = KeyStore.getInstance("AndroidKeyStore").apply {
@@ -364,12 +320,10 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
 
     digest = digest.replace("-", "")
 
-    println(toASN1(signature).joinToString(prefix = "[", postfix = "]"))
-
     val verified: Boolean = Signature.getInstance("${digest}withECDSA").run {
       initVerify(entry.certificate)
       update(data)
-      verify(toASN1(signature))
+      verify(signature)
     }
 
     return verified

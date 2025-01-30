@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:os_keystore_backend/biometric_prompt_data.dart';
+import 'package:pointycastle/asn1.dart' as asn1;
 
 import 'os_keystore_backend_platform_interface.dart';
 
@@ -38,7 +39,7 @@ class MethodChannelOsKeystoreBackend extends OsKeystoreBackendPlatform {
       'biometricPromptNegative': promptData?.negativeButton
     });
     if (signature != null) {
-      return signature;
+      return _fromAsn1(signature);
     } else {
       throw Exception('Signature Generation failed');
     }
@@ -50,7 +51,7 @@ class MethodChannelOsKeystoreBackend extends OsKeystoreBackendPlatform {
         'verify', <String, dynamic>{
       'keyId': keyId,
       'data': data,
-      'signature': signature
+      'signature': _toAsn1(signature)
     });
     if (verified != null) {
       return verified;
@@ -90,5 +91,71 @@ class MethodChannelOsKeystoreBackend extends OsKeystoreBackendPlatform {
     } else {
       throw Exception('Fetching information failed');
     }
+  }
+
+  Uint8List _fromAsn1(Uint8List asn1Data) {
+    var p = asn1.ASN1Parser(asn1Data);
+    var dataSequence = p.nextObject() as asn1.ASN1Sequence;
+    var r = dataSequence.elements!.first as asn1.ASN1Integer;
+    var s = dataSequence.elements!.last as asn1.ASN1Integer;
+    var rAsList = _unsignedIntToBytes(r.integer!);
+    var sAsList = _unsignedIntToBytes(s.integer!);
+    // for signatures with P-521 and SHA-512 sometimes padding is needed
+    if (rAsList.length == 65) {
+      rAsList = Uint8List.fromList([0, ...rAsList]);
+    }
+    if (sAsList.length == 65) {
+      sAsList = Uint8List.fromList([0, ...sAsList]);
+    }
+    return Uint8List.fromList(rAsList + sAsList);
+  }
+
+  Uint8List _toAsn1(Uint8List plainData) {
+    var l = plainData.length ~/ 2;
+    var r = plainData.sublist(0, l);
+    var s = plainData.sublist(l);
+    var seq = asn1.ASN1Sequence(elements: [
+      asn1.ASN1Integer(_bytesToUnsignedInt(r)),
+      asn1.ASN1Integer(_bytesToUnsignedInt(s))
+    ]);
+    return seq.encode();
+  }
+
+  // Source: pointyCastle src/utils
+  final _byteMask = BigInt.from(0xff);
+
+  Uint8List _unsignedIntToBytes(BigInt number) {
+    if (number.isNegative) {
+      throw Exception('Negative number');
+    }
+    if (number == BigInt.zero) {
+      return Uint8List.fromList([0]);
+    }
+    var size = number.bitLength + (number.isNegative ? 8 : 7) >> 3;
+    var result = Uint8List(size);
+    for (var i = 0; i < size; i++) {
+      result[size - i - 1] = (number & _byteMask).toInt();
+      number = number >> 8;
+    }
+    return result;
+  }
+
+  BigInt _bytesToUnsignedInt(List<int> magnitude) {
+    BigInt result;
+
+    if (magnitude.length == 1) {
+      result = BigInt.from(magnitude[0]);
+    } else {
+      result = BigInt.from(0);
+      for (var i = 0; i < magnitude.length; i++) {
+        var item = magnitude[magnitude.length - i - 1];
+        result |= BigInt.from(item) << (8 * i);
+      }
+    }
+
+    if (result != BigInt.zero) {
+      result = result.toUnsigned(result.bitLength);
+    }
+    return result;
   }
 }

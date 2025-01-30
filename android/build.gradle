@@ -47,6 +47,7 @@ android {
 
     defaultConfig {
         minSdk = 28
+        consumerProguardFiles 'lib-proguard-rules.txt'
     }
 
     dependencies {
@@ -68,6 +69,5 @@ android {
 }
 
 dependencies {
-    implementation 'com.hierynomus:asn-one:0.6.0'
-    implementation 'androidx.biometric:biometric-ktx:1.4.0-alpha02'
+    implementation 'androidx.biometric:biometric-ktx:1.2.0-alpha05'
 }
