@@ -18,12 +18,14 @@ void main() {
     final signature = await OsKeystoreBackend().sign(keyId, data);
     final verified = await OsKeystoreBackend().verify(keyId, data, signature);
     expect(verified, isTrue);
+    final falseData = Uint8List.fromList([1, 2, 3, 4, 6]);
+    final verified2 = await OsKeystoreBackend().verify(keyId, falseData, signature);
+    expect(verified2, isFalse);
   });
 
   testWidgets('Get key info', (tester) async {
     final keyId = await OsKeystoreBackend().generateKey("secp256r1", true);
     final keyInfo = await OsKeystoreBackend().getKeyInfo(keyId);
-    // TODO: Add more specific checks
     expect(keyInfo, isNotNull);
   });
 
