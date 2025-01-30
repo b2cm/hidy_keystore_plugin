@@ -36,6 +36,10 @@ dev_dependencies:
     sdk: flutter
   flutter_test:
     sdk: flutter
+  sd_jwt:
+    git:
+      url: https://github.com/b2cm/sd_jwt
+      ref: development
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
