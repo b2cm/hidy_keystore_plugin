@@ -107,6 +107,7 @@ class _MyAppState extends State<MyApp> {
       for (var entry in x5c) {
         printWrapped(entry);
       }
+      info.remove('x5c');
       print(info);
     } on PlatformException catch (e) {
       print(e);

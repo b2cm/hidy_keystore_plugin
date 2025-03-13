@@ -1,15 +1,19 @@
 # os_keystore_backend
 
-A new Flutter project.
+This Plugin makes Android KeyStore and iOS SecureEnclave usable for Flutter Apps.
+For now generating new keys and using them for signing data ist supported.
 
 ## Getting Started
+Generate a key and use it for signing: 
+```
+final _osKeystoreBackendPlugin = OsKeystoreBackend();
+var keyId = await _osKeystoreBackendPlugin.generateKey('secp256r1', true);
+var sig = await _osKeystoreBackendPlugin.sign(
+          keyId,
+          ascii.encode('abcdefg'));
 
-This project is a starting point for a Flutter
-[plug-in package](https://flutter.dev/to/develop-plugins),
-a specialized package that includes platform-specific implementation code for
-Android and/or iOS.
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+For more complex example please have a look at [example](./example).
+
 

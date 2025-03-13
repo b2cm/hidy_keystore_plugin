@@ -347,13 +347,20 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
       throw  Exception("No keyInfo found")
     }
 
-
     val data = LinkedHashMap<String, Any>()
-    //val x5c = ArrayList<String>()
-    //x5c.add(Base64.getEncoder().encodeToString(entry.certificate.encoded))
     val x5c = entry.certificateChain.map { c -> Base64.getEncoder().encodeToString(c.encoded) }
     data["x5c"] = x5c
     data["kty"] = "EC"
+
+    val digest = keyInfo.digests.first()
+    val curve : String = when(digest) {
+      KeyProperties.DIGEST_SHA256 -> "P-256"
+      KeyProperties.DIGEST_SHA384 -> "P-384"
+      KeyProperties.DIGEST_SHA512 -> "P-521"
+      else -> {throw Exception("Unknown curve")}
+    }
+    data["crv"] = curve
+
 
     val keyOps = ArrayList<String>()
     var keyP = keyInfo.purposes
