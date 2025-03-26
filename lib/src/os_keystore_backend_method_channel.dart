@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:os_keystore_backend/biometric_prompt_data.dart';
 import 'package:pointycastle/asn1.dart' as asn1;
 
+import 'biometric_prompt_data.dart';
 import 'os_keystore_backend_platform_interface.dart';
 
 /// An implementation of [OsKeystoreBackendPlatform] that uses method channels.

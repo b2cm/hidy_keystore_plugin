@@ -1,3 +1,3 @@
-## 0.0.1
+## 1.0.0
 
-* TODO: Describe initial release.
+- Initial release: Signing and verification with android keystore and iOS secure enclave

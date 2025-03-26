@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
-import 'package:os_keystore_backend/biometric_prompt_data.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
+import 'biometric_prompt_data.dart';
 import 'os_keystore_backend_method_channel.dart';
 
 abstract class OsKeystoreBackendPlatform extends PlatformInterface {

@@ -16,4 +16,7 @@ var sig = await _osKeystoreBackendPlugin.sign(
 
 For more complex example please have a look at [example](./example).
 
-
+## Notes
+- On Android the plugin tries to use Strongbox first (only possible with curve secp256r1)
+if not available the trusted execution environment is used
+- On iOS only curve secp256r1 is supported

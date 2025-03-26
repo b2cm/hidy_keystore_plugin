@@ -3,8 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:os_keystore_backend/biometric_prompt_data.dart';
-import 'package:os_keystore_backend/os_keystore_backend.dart';
+import 'package:keystore_plugin/keystore_plugin.dart';
 
 void main() {
   runApp(const MyApp());
