@@ -1,4 +1,4 @@
-# os_keystore_backend
+# keystore_plugin
 
 This Plugin makes Android KeyStore and iOS SecureEnclave usable for Flutter Apps.
 For now generating new keys and using them for signing data ist supported.
