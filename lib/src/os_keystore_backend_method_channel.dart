@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:pointycastle/asn1.dart' as asn1;
 
 import 'biometric_prompt_data.dart';
+import 'os_keystore_backend.dart';
 import 'os_keystore_backend_platform_interface.dart';
 
 /// An implementation of [OsKeystoreBackendPlatform] that uses method channels.
@@ -13,12 +14,13 @@ class MethodChannelOsKeystoreBackend extends OsKeystoreBackendPlatform {
 
   @override
   Future<String> generateKey(String curve, bool userAuthenticationRequired,
-      String? attestationChallenge) async {
+      String? attestationChallenge, AuthType authType) async {
     final keyId = await methodChannel
         .invokeMethod<String>('generateKey', <String, dynamic>{
       'curve': curve,
       'userAuthenticationRequired': userAuthenticationRequired,
-      'attestationChallenge': attestationChallenge
+      'attestationChallenge': attestationChallenge,
+      'authType': authType.index + 1
     });
     if (keyId != null) {
       return keyId;

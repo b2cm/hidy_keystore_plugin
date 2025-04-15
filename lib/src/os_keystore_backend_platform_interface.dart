@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'biometric_prompt_data.dart';
+import 'os_keystore_backend.dart';
 import 'os_keystore_backend_method_channel.dart';
 
 abstract class OsKeystoreBackendPlatform extends PlatformInterface {
@@ -27,7 +28,7 @@ abstract class OsKeystoreBackendPlatform extends PlatformInterface {
   }
 
   Future<String> generateKey(String curve, bool userAuthenticationRequired,
-      String? attestationChallenge);
+      String? attestationChallenge, AuthType authType);
 
   Future<Uint8List> sign(
       String keyId, Uint8List data, BiometricPromptData? promptData);

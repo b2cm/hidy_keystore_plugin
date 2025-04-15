@@ -8,12 +8,17 @@ class OsKeystoreBackend {
   ///
   /// Valid values for [curve] are `secp256r1`, `secp384r1` and `secp521r1`.
   /// Pay attention to the fact that on iOS only secp256r1 is supported and on android
-  /// all curves cann be supported be trusted execution environment but only secp256r1
+  /// all curves can be supported by trusted execution environment but only secp256r1
   /// with strongbox (secure element).
+  ///
+  /// [authType] describes which Authentication types are allowed for this key (biometric or device credential (pin, passcode, pattern) or both).
+  /// On Android this parameter is ignored below Android 11, because there only biometric is allowed.
+  /// Default is set to biometric.
   Future<String> generateKey(String curve, bool userAuthenticationRequired,
-      [String? attestationChallenge]) {
-    return OsKeystoreBackendPlatform.instance
-        .generateKey(curve, userAuthenticationRequired, attestationChallenge);
+      {String? attestationChallenge,
+      AuthType authType = AuthType.biometricOnly}) {
+    return OsKeystoreBackendPlatform.instance.generateKey(
+        curve, userAuthenticationRequired, attestationChallenge, authType);
   }
 
   /// Sign the given [data] with the key identified by [keyId]
@@ -53,3 +58,5 @@ class OsKeystoreBackend {
     return OsKeystoreBackendPlatform.instance.deleteKey(keyId);
   }
 }
+
+enum AuthType { deviceCredential, biometricOnly, deviceCredentialOrBiometric }

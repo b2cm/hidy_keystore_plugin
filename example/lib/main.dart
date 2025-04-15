@@ -39,8 +39,9 @@ class _MyAppState extends State<MyApp> {
     });
 
     try {
-      keyId = await _osKeystoreBackendPlugin.generateKey(
-          'secp521r1', true, 'challenge');
+      keyId = await _osKeystoreBackendPlugin.generateKey('secp256r1', true,
+          attestationChallenge: 'challenge',
+          authType: AuthType.deviceCredential);
       keyGenerated = true;
     } on PlatformException catch (e) {
       print(e);

@@ -7,6 +7,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
+import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.fragment.app.FragmentActivity
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -63,9 +64,10 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
 
       val userAuth = call.argument<Boolean>("userAuthenticationRequired") ?: false
       val attestationChallenge = call.argument<String>("attestationChallenge") ?: ""
+      val authType = call.argument<Int>("authType") ?: 2
 
       try {
-        val keyId = generateKey(curve!!, userAuth, attestationChallenge)
+        val keyId = generateKey(curve!!, userAuth, authType, attestationChallenge)
         result.success(keyId)
       } catch(e: Exception){
         result.error("GenerationError", e.message, e.stackTraceToString())
@@ -83,7 +85,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
             call.argument<String?>("biometricPromptSubtitle"),
             call.argument<String?>("biometricPromptNegative"))
         }catch (e: Exception){
-          result.error("SigningError", e.message, "")
+          result.error("SigningError", e.message, e.stackTraceToString())
         }
       } else {
         result.error("ArgumentError", "Missing argument", "")
@@ -152,7 +154,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     channel.setMethodCallHandler(null)
   }
 
-  private fun generateKey(curve: String, userAuthenticationRequired: Boolean, attestationChallenge: String): String {
+  private fun generateKey(curve: String, userAuthenticationRequired: Boolean, allowedAuthType: Int, attestationChallenge: String): String {
     val keyPairGenerator = KeyPairGenerator.getInstance(
       KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore"
     )
@@ -171,8 +173,19 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
 
     alias = "${digest}_$alias"
 
+    val authType = if(android.os.Build.VERSION.SDK_INT >= 30) {
+      when(allowedAuthType){
+        1 -> KeyProperties.AUTH_DEVICE_CREDENTIAL
+        2 -> KeyProperties.AUTH_BIOMETRIC_STRONG
+        3 -> KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL
+        else -> {throw  Exception("Unknown authType")}
+      }
+    } else {
+      2
+    }
+
     try {
-      keyPairGenerator.initialize(
+     val builder =
         KeyGenParameterSpec.Builder(
           alias,
           KeyProperties.PURPOSE_SIGN
@@ -182,8 +195,13 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
           .setIsStrongBoxBacked(true)
           .setUserAuthenticationRequired(userAuthenticationRequired)
           .setAttestationChallenge(attestationChallenge.toByteArray())
-          .build()
-      )
+
+      if(android.os.Build.VERSION.SDK_INT >= 30){
+        builder.setUserAuthenticationParameters(0, authType )
+      }
+
+      val r =  builder.build()
+      keyPairGenerator.initialize(r)
       keyPairGenerator.generateKeyPair()
     } catch (e: StrongBoxUnavailableException) {
       alias += "_tee"
@@ -195,6 +213,11 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
        .setDigests(digest)
        .setUserAuthenticationRequired(userAuthenticationRequired)
        .setAttestationChallenge(attestationChallenge.toByteArray())
+
+      if(android.os.Build.VERSION.SDK_INT >= 30){
+        builder.setUserAuthenticationParameters(0, authType )
+      }
+
       val r =  builder.build()
       keyPairGenerator.initialize(r)
       keyPairGenerator.generateKeyPair()
@@ -208,6 +231,11 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         .setDigests(digest)
         .setUserAuthenticationRequired(userAuthenticationRequired)
         .setAttestationChallenge(attestationChallenge.toByteArray())
+
+      if(android.os.Build.VERSION.SDK_INT >= 30){
+        builder.setUserAuthenticationParameters(0, authType )
+      }
+
       val r =  builder.build()
       keyPairGenerator.initialize(r)
       keyPairGenerator.generateKeyPair()
@@ -240,6 +268,12 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
       return
     }
 
+    val authType = if(android.os.Build.VERSION.SDK_INT >= 30)
+      keyInfo.userAuthenticationType
+    else
+      2
+
+
     var digest = keyInfo.digests.first().split("_").first()
 
     digest = digest.replace("-", "")
@@ -257,34 +291,48 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
           override fun onAuthenticationError(errorCode: Int,
                                              errString: CharSequence) {
             super.onAuthenticationError(errorCode, errString)
-            result.error("SigningError", "Authentication error", null)
+            result.error("SigningError", "Authentication error", errString)
           }
 
           override fun onAuthenticationSucceeded(
             biometricResult: BiometricPrompt.AuthenticationResult) {
             super.onAuthenticationSucceeded(biometricResult)
+            biometricResult.cryptoObject?.signature!!.update(data)
             signature = biometricResult.cryptoObject?.signature!!.sign()
             result.success(signature)
           }
 
           override fun onAuthenticationFailed() {
             super.onAuthenticationFailed()
-            result.error("SigningError", "Authentication failed", null)
+            //result.error("SigningError", "Authentication failed", null)
           }
         })
 
-      val promptInfo = BiometricPrompt.PromptInfo.Builder()
+      val biometricManager = when(authType) {
+        1 -> BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        2 -> BiometricManager.Authenticators.BIOMETRIC_STRONG
+        3 -> BiometricManager.Authenticators.DEVICE_CREDENTIAL or BiometricManager.Authenticators.BIOMETRIC_STRONG
+        else -> {throw Exception("Unknown authType")}
+        }
+
+
+      val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
         .setTitle(biometricPromptTitle ?: "Biometric login for signing")
         .setSubtitle(biometricPromptSubtitle ?: "Please Authenticate for the usage of your signing key")
-        .setNegativeButtonText(biometricPromptNegative ?: "Cancel")
-        .build()
+        .setAllowedAuthenticators(biometricManager)
+
+      if(authType == 2){ // biometric only
+        promptInfoBuilder.setNegativeButtonText(biometricPromptNegative ?: "Cancel")
+      }
+
+      val promptInfo = promptInfoBuilder.build()
 
       val s = Signature.getInstance("${digest}withECDSA")
       s.initSign(entry.privateKey)
-      s.update(data)
 
       biometricPrompt.authenticate(promptInfo,
         BiometricPrompt.CryptoObject(s))
+
 
     } else {
       signature = Signature.getInstance("${digest}withECDSA").run {
