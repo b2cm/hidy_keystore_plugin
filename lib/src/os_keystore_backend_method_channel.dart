@@ -13,14 +13,19 @@ class MethodChannelOsKeystoreBackend extends OsKeystoreBackendPlatform {
   final methodChannel = const MethodChannel('os_keystore_backend');
 
   @override
-  Future<String> generateKey(String curve, bool userAuthenticationRequired,
-      String? attestationChallenge, AuthType authType) async {
+  Future<String> generateKey(
+      String curve,
+      bool userAuthenticationRequired,
+      String? attestationChallenge,
+      AuthType authType,
+      bool invalidateByNewBiometric) async {
     final keyId = await methodChannel
         .invokeMethod<String>('generateKey', <String, dynamic>{
       'curve': curve,
       'userAuthenticationRequired': userAuthenticationRequired,
       'attestationChallenge': attestationChallenge,
-      'authType': authType.index + 1
+      'authType': authType.index + 1,
+      'invalidateByNewBiometric': invalidateByNewBiometric
     });
     if (keyId != null) {
       return keyId;

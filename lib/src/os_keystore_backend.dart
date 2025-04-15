@@ -14,11 +14,19 @@ class OsKeystoreBackend {
   /// [authType] describes which Authentication types are allowed for this key (biometric or device credential (pin, passcode, pattern) or both).
   /// On Android this parameter is ignored below Android 11, because there only biometric is allowed.
   /// Default is set to biometric.
+  ///
+  /// [invalidateByNewBiometric] describes if the key is invalidated in case a new fingerprint/face is enrolled,
+  /// Default is set to true, which means that the key is invalidated if a new biometric is added.
   Future<String> generateKey(String curve, bool userAuthenticationRequired,
       {String? attestationChallenge,
-      AuthType authType = AuthType.biometricOnly}) {
+      AuthType authType = AuthType.biometricOnly,
+      bool invalidateByNewBiometric = true}) {
     return OsKeystoreBackendPlatform.instance.generateKey(
-        curve, userAuthenticationRequired, attestationChallenge, authType);
+        curve,
+        userAuthenticationRequired,
+        attestationChallenge,
+        authType,
+        invalidateByNewBiometric);
   }
 
   /// Sign the given [data] with the key identified by [keyId]

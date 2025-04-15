@@ -27,8 +27,12 @@ abstract class OsKeystoreBackendPlatform extends PlatformInterface {
     _instance = instance;
   }
 
-  Future<String> generateKey(String curve, bool userAuthenticationRequired,
-      String? attestationChallenge, AuthType authType);
+  Future<String> generateKey(
+      String curve,
+      bool userAuthenticationRequired,
+      String? attestationChallenge,
+      AuthType authType,
+      bool invalidateByNewBiometric);
 
   Future<Uint8List> sign(
       String keyId, Uint8List data, BiometricPromptData? promptData);

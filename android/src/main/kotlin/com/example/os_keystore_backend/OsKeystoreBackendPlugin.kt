@@ -65,9 +65,10 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
       val userAuth = call.argument<Boolean>("userAuthenticationRequired") ?: false
       val attestationChallenge = call.argument<String>("attestationChallenge") ?: ""
       val authType = call.argument<Int>("authType") ?: 2
+      val invalidByNewBiometric = call.argument<Boolean>("invalidateByNewBiometric") ?: true
 
       try {
-        val keyId = generateKey(curve!!, userAuth, authType, attestationChallenge)
+        val keyId = generateKey(curve!!, userAuth, authType, attestationChallenge, invalidByNewBiometric)
         result.success(keyId)
       } catch(e: Exception){
         result.error("GenerationError", e.message, e.stackTraceToString())
@@ -154,7 +155,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     channel.setMethodCallHandler(null)
   }
 
-  private fun generateKey(curve: String, userAuthenticationRequired: Boolean, allowedAuthType: Int, attestationChallenge: String): String {
+  private fun generateKey(curve: String, userAuthenticationRequired: Boolean, allowedAuthType: Int, attestationChallenge: String, invalidateByBiometricEnrollment: Boolean): String {
     val keyPairGenerator = KeyPairGenerator.getInstance(
       KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore"
     )
@@ -195,6 +196,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
           .setIsStrongBoxBacked(true)
           .setUserAuthenticationRequired(userAuthenticationRequired)
           .setAttestationChallenge(attestationChallenge.toByteArray())
+          .setInvalidatedByBiometricEnrollment(invalidateByBiometricEnrollment)
 
       if(android.os.Build.VERSION.SDK_INT >= 30){
         builder.setUserAuthenticationParameters(0, authType )
@@ -213,6 +215,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
        .setDigests(digest)
        .setUserAuthenticationRequired(userAuthenticationRequired)
        .setAttestationChallenge(attestationChallenge.toByteArray())
+       .setInvalidatedByBiometricEnrollment(invalidateByBiometricEnrollment)
 
       if(android.os.Build.VERSION.SDK_INT >= 30){
         builder.setUserAuthenticationParameters(0, authType )
@@ -231,6 +234,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         .setDigests(digest)
         .setUserAuthenticationRequired(userAuthenticationRequired)
         .setAttestationChallenge(attestationChallenge.toByteArray())
+        .setInvalidatedByBiometricEnrollment(invalidateByBiometricEnrollment)
 
       if(android.os.Build.VERSION.SDK_INT >= 30){
         builder.setUserAuthenticationParameters(0, authType )
