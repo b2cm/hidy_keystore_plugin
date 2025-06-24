@@ -10,6 +10,8 @@ public class OsKeystoreBackendPlugin: NSObject, FlutterPlugin {
         case argumentError(message: String)
     }
 
+    enum AuthType { deviceCredential, biometricOnly, deviceCredentialOrBiometric }
+
     private var channel: FlutterMethodChannel?
 
     // MARK: - FlutterPlugin conformance
@@ -124,12 +126,34 @@ public class OsKeystoreBackendPlugin: NSObject, FlutterPlugin {
         guard let userAuthenticationRequired = args?["userAuthenticationRequired"] as? Bool else {
             throw OsKeystoreBackendPluginError.argumentError(message: "Missing userAuthenticationRequired argument")
         }
-        
+        guard let authType = args?["authType"] as? AuthType else {
+            throw OsKeystoreBackendPluginError.argumentError(message: "Missing authType argument")
+        }
+        guard let invalidateByNewBiometric = args?["invalidateByNewBiometric"] as? Bool else {
+            throw OsKeystoreBackendPluginError.argumentError(message: "Missing invalidateByNewBiometric argument")
+        }
+
         // since we dont know the public key when creating the key we create a uuid instead
         let uniqueID = UUID().uuidString
 
+        // set the correct access control flags based on the authType
+        var accessControlFlags: SecAccessControlCreateFlags = []
+        switch authType {
+        case .deviceCredential:
+            accessControlFlags = [.privateKeyUsage, .devicePasscode]
+        case .biometricOnly:
+            accessControlFlags = [.privateKeyUsage, .biometryAny]
+        case .deviceCredentialOrBiometric:
+            accessControlFlags = [.privateKeyUsage, .or, .devicePasscode, .biometryAny]
+        }
+        
+        // if invalidateByNewBiometric is true, we add the biometryCurrentSet flag to invalidate in case new biometric is added
+        if(invalidateByNewBiometric) {
+            accessControlFlags.insert(.biometryCurrentSet)
+        }
+
         let access: SecAccessControl = {
-            let flags: SecAccessControlCreateFlags = userAuthenticationRequired ? [.privateKeyUsage, .devicePasscode] : .privateKeyUsage
+            let flags: SecAccessControlCreateFlags = userAuthenticationRequired ? accessControlFlags : .privateKeyUsage
             return SecAccessControlCreateWithFlags(
                 kCFAllocatorDefault,
                 kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
