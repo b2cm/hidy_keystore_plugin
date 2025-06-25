@@ -11,6 +11,9 @@ class OsKeystoreBackend {
   /// all curves can be supported by trusted execution environment but only secp256r1
   /// with strongbox (secure element).
   ///
+  /// [attestationChallenge] is only used in android. If it is set a certificate chain for the new key is generated,
+  /// where the certificate for the key contains the given challenge
+  ///
   /// [authType] describes which authentication types are allowed for this key (biometric or device credential (pin, passcode, pattern) or both).
   /// On Android this parameter is ignored below Android 11, because there only biometric is allowed.
   /// Default is set to biometric.
