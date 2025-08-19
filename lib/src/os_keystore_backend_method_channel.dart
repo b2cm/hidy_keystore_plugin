@@ -80,8 +80,13 @@ class MethodChannelOsKeystoreBackend extends OsKeystoreBackendPlatform {
 
   @override
   Future<bool> hasKey(String keyId) async {
-    final info = await methodChannel
-        .invokeMethod<bool>('hasKey', <String, dynamic>{'keyId': keyId});
+    bool? info;
+    try {
+      info = await methodChannel
+          .invokeMethod<bool>('hasKey', <String, dynamic>{'keyId': keyId});
+    } catch (_) {
+      return false;
+    }
     if (info != null) {
       return info;
     } else {

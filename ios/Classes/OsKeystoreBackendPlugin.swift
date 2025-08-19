@@ -12,7 +12,7 @@ public class OsKeystoreBackendPlugin: NSObject, FlutterPlugin {
         case failedToCreateAccessControl(description: String)
     }
 
-    enum AuthType: Int { case deviceCredential = 1; case biometricOnly = 2; case deviceCredentialOrBiometric = 3 }
+    enum AuthType: Int { case deviceCredential = 1; case biometricOnly = 2; case deviceCredentialOrBiometric = 3; case userPresence = 4 }
 
     private var channel: FlutterMethodChannel?
 
@@ -87,7 +87,7 @@ public class OsKeystoreBackendPlugin: NSObject, FlutterPlugin {
             do { 
               try handleHasKey(call: call, result: result)
             } catch (OsKeystoreBackendPluginError.keyNotFound(let message)) {
-                result(FlutterError(code: "hasKey.keyNotFound", message: message, details: nil))
+                result(false) // for consumers that iterate through multiple keystores, errors might cause a crash
             } catch (OsKeystoreBackendPluginError.unsupportedAlgorithm(let message)) {
                 result(FlutterError(code: "hasKey.unsuppoertedAlgorithm", message: message, details: nil))
             } catch (OsKeystoreBackendPluginError.argumentError(let message)) {
@@ -149,34 +149,38 @@ public class OsKeystoreBackendPlugin: NSObject, FlutterPlugin {
             // set the correct access control flags based on the authType
             var accessControlFlags: SecAccessControlCreateFlags = []
             switch authType {
-            case .deviceCredential:
-                accessControlFlags = [.privateKeyUsage, .devicePasscode]
-            case .biometricOnly:
-                if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) {
-                    
-                    if(invalidateByNewBiometric) {
-                        accessControlFlags = [.privateKeyUsage, .biometryCurrentSet]
+                case .deviceCredential:
+                    accessControlFlags = [.privateKeyUsage, .devicePasscode]
+                case .biometricOnly:
+                    if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) {
+                        
+                        if(invalidateByNewBiometric) {
+                            accessControlFlags = [.privateKeyUsage, .biometryCurrentSet]
+                        } else {
+                            accessControlFlags = [.privateKeyUsage, .biometryAny]
+                        }
                     } else {
-                        accessControlFlags = [.privateKeyUsage, .biometryAny]
+                        throw OsKeystoreBackendPluginError.argumentError(message: "biometrics are not setup on this device")
                     }
-                } else {
-                    throw OsKeystoreBackendPluginError.argumentError(message: "biometrics are not setup on this device")
-                }
-            case .deviceCredentialOrBiometric:
-                // @note: invalidateByNewBiometric does not invalidate deviceCredential.
-                // 1. user generates key (key is accessable through biometrics OR passcode)
-                // 2. user deletes face
-                // 3. user tries to access key (like signing) -> passcode prompt will still pop up and be valid for access
-                accessControlFlags = [.privateKeyUsage, .or, .devicePasscode]
-                if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) {
-                    if(invalidateByNewBiometric) {
-                        accessControlFlags.insert(.biometryCurrentSet)
+                case .deviceCredentialOrBiometric:
+                    // @note: invalidateByNewBiometric does not invalidate deviceCredential.
+                    // 1. user generates key (key is accessable through biometrics OR passcode)
+                    // 2. user deletes face
+                    // 3. user tries to access key (like signing) -> passcode prompt will still pop up and be valid for access
+                    accessControlFlags = [.privateKeyUsage, .devicePasscode]
+                    if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) {
+                        if(invalidateByNewBiometric) {
+                            accessControlFlags.insert(.or)
+                            accessControlFlags.insert(.biometryCurrentSet)
+                        } else {
+                            accessControlFlags.insert(.or)
+                            accessControlFlags.insert(.biometryAny)
+                        }
                     } else {
-                        accessControlFlags.insert(.biometryAny)
+                        throw OsKeystoreBackendPluginError.argumentError(message: "biometrics are not setup on this device")
                     }
-                } else {
-                    throw OsKeystoreBackendPluginError.argumentError(message: "biometrics are not setup on this device")
-                }
+                case .userPresence:
+                    accessControlFlags = [.privateKeyUsage, .userPresence]
             }
             
             let access: SecAccessControl = try {

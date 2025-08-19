@@ -70,4 +70,9 @@ class OsKeystoreBackend {
   }
 }
 
-enum AuthType { deviceCredential, biometricOnly, deviceCredentialOrBiometric }
+enum AuthType {
+  deviceCredential,
+  biometricOnly,
+  deviceCredentialOrBiometric,
+  userPresence,
+}

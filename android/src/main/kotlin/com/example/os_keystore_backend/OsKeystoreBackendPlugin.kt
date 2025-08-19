@@ -179,6 +179,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         1 -> KeyProperties.AUTH_DEVICE_CREDENTIAL
         2 -> KeyProperties.AUTH_BIOMETRIC_STRONG
         3 -> KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL
+        4 -> KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL // userPresence fallback
         else -> {throw  Exception("Unknown authType")}
       }
     } else {
@@ -316,6 +317,7 @@ class OsKeystoreBackendPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         1 -> BiometricManager.Authenticators.DEVICE_CREDENTIAL
         2 -> BiometricManager.Authenticators.BIOMETRIC_STRONG
         3 -> BiometricManager.Authenticators.DEVICE_CREDENTIAL or BiometricManager.Authenticators.BIOMETRIC_STRONG
+        4 -> BiometricManager.Authenticators.DEVICE_CREDENTIAL or BiometricManager.Authenticators.BIOMETRIC_STRONG // userPresence fallback
         else -> {throw Exception("Unknown authType")}
         }
 
