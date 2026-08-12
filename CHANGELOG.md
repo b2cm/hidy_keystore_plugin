@@ -1,3 +1,7 @@
+## 1.3.0 
+
+- update min flutter version to 3.44
+
 ## 1.2.0
 
 - fix handling of authTypes in iOS and add new one userPresence
